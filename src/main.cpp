@@ -190,7 +190,8 @@ void task2(void *parameter) {
 
       // Copiar los datos al tensor de entrada del modelo
       for (int i = 0; i < listSize; i++) {
-          model_input->data.f[0] = input_data[i];
+          float value = input_data[i];
+          model_input->data.f[0] = value;
 
           /*
           Serial.println("\nValores ingresados al modelo");
@@ -208,6 +209,7 @@ void task2(void *parameter) {
           // Read predicted y value from output buffer (tensor)
           float acum = 0;
           Serial.println();
+          
 
           //Serial.println("\nValores output después de ejecutado el modelo 1");
           // Reshaping the array for compatibility with 1D model
@@ -226,21 +228,26 @@ void task2(void *parameter) {
 
           #if DEBUG
             Serial.println("Inference result: ");
-            float mae_loss = fabs(pred_vals - input_data[i]);
+            String msg = "Is " + String(value,2) + " an Outlier?: ";
+            Serial.print(msg);
+            float mae_loss = fabs(pred_vals - value);
             if (mae_loss > THRESHOLD){
+              Serial.println("YES");
               Serial.println("****** OUTLIER ******");
               Serial.print("INPUT DATA: ");
               Serial.println(values_df[i]);
               Serial.print("MAE: ");
               Serial.println(mae_loss);
               Serial.println();
+            }
+            else{
+              Serial.println("NO");
             }           
           #endif
-
-          // Liberar la memoria asignada por normalize_data
-          free(input_data);
-          printf("************ Free Memory: %u bytes ************\n", esp_get_free_heap_size());
       }
+      // Liberar la memoria asignada por normalize_data
+      free(input_data);
+      printf("************ Free Memory: %u bytes ************\n", esp_get_free_heap_size());
 
     }
 
