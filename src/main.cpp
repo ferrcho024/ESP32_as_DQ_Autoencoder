@@ -5,6 +5,9 @@
 #include <freertos/task.h>
 #include "freertos/queue.h"
 
+#define LED_BUILTIN 3
+const int ledPin = LED_BUILTIN;
+
 // Local includes 
 #include "modelo_df.h" // Autoencoder
 #include "parameters.h"
@@ -27,6 +30,7 @@ extern "C" {
 
 // Set to 1 to output debug info to Serial, 0 otherwise
 #define DEBUG 1
+
 
 // Settings Autoencoder
 constexpr float THRESHOLD = 0.3500242427984803;    // Any MSE over this is an anomaly
@@ -73,7 +77,7 @@ void task1(void *parameter) {
   int cont = 0; // Variable de conteo de datos recibidos.
   float queue_df[60];
   float queue_nova[60];
-
+  
   while(true){
     delay(frec/4);
 
@@ -84,7 +88,8 @@ void task1(void *parameter) {
       ban = false;
     }
 
-    if (callback){     
+    if (callback){
+      ledBlink(1);     
 
       //   Encontrar la posición de la primera coma
       int comaPos1 = in_txt.indexOf(',');
@@ -100,12 +105,13 @@ void task1(void *parameter) {
 
 
     //   if (token != ID){
-      
+      /*
       printf("Valor DF: %s\n",df_value);
       printf("Valor NOVA: %s\n",nova_value);
       printf("Valor SIATA: %s\n",in_txt);
       printf("%d\n",cont);
       printf("\n");
+      */
     
       value_to_list(queue_df, df_value, cont);
       value_to_list(queue_nova, nova_value, cont);         
@@ -259,6 +265,11 @@ void task2(void *parameter) {
 
 void setup() {
   Serial.begin(115200);
+
+  // Set pin mode
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, HIGH);
+  
 
   // Crear la cola
   //queue_df = xQueueCreate(1, sizeof(float[60]));

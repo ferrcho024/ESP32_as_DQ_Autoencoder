@@ -6,7 +6,7 @@
 
 // MQTT settings
 const String ID = "1";
-const String BROKER = "192.168.43.228";
+const String BROKER = "192.168.1.104";
 const String CLIENT_NAME = "esp32_"+ID;
 const String TOPIC = "80";
 

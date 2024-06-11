@@ -2,6 +2,18 @@
 #include "esp_sntp.h"
 #include "WiFiConfig.h" // My WiFi configuration.
 
+void ledBlink(int repe) {
+
+  for (int i = 0; i < repe; i++) {
+    digitalWrite(ledPin, LOW);
+    delay(250);
+    digitalWrite(ledPin, HIGH);
+    delay(250);
+    
+  }
+}
+
+
 void printTime(){
   
   struct tm time;
@@ -35,6 +47,11 @@ void printTime(){
 
 }
 
+void setTimezone(String timezone){
+  setenv("TZ",timezone.c_str(),1);  //  Now adjust the TZ.  Clock settings are adjusted to show the new local time
+  tzset();
+}
+
 void ConnectToWiFi()
 {
  
@@ -60,10 +77,11 @@ void ConnectToWiFi()
   delay(1000);
 
   // Configurar el servicio SNTP
-  configTime(-18000, 3600, ntpServer); // -18000 es para UTC -5 (-5*60*60)
+  configTime(0, 0, ntpServer1, ntpServer2, ntpServer3); // -18000 es para UTC -5 (-5*60*60)
+  setTimezone("<-05>5");  // Ajusta la hora a UTC-5 Hora en Bogotá https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 
   printTime();
-  //delay(1000);
+  //delay(1000); 
 }
 
 struct tm get_current_time() {
