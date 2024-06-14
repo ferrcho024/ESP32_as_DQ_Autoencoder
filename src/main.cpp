@@ -11,7 +11,8 @@ const int ledPin = LED_BUILTIN;
 // Local includes 
 #include "modelo_df.h" // Autoencoder
 #include "parameters.h"
-#include "file_func.h"
+// #include "file_func.h"
+#include "connectivity.h"
 #include "dimensions.h"
 #include "mqtt.h"
 
@@ -56,6 +57,14 @@ int frec = 1000; // Espacio de tiempo entre los values que llegan (en milisegund
 float values_df[60];
 float values_nova[60];
 float value_siata;
+
+void value_to_list(float *list, String value, int pos ){
+    if (value.equalsIgnoreCase("nan")) {
+        list[pos] = NAN;  // Representación de NaN en C
+    } else {
+        list[pos] = value.toFloat();
+    }
+}
 
 // TFLite globals, used for compatibility with Arduino-style sketches - Autoencoder
 namespace {
@@ -130,13 +139,14 @@ void task2(void *parameter) {
   float dimen[24][10];
   const char* outlier;
   float mae_loss;
+  int decimales = 5;
 
   #if DEBUG == 2
-    Serial.printf("comp_df,comp_nova,pres_df,pres_nova,acc_df,acc_nova,uncer,concor,fusion,DQIndex\n");
+    Serial.print("comp_df,comp_nova,pres_df,pres_nova,acc_df,acc_nova,uncer,concor,fusion,DQIndex\n");
   #endif
 
   #if DEBUG == 3
-    Serial.printf("value,OUTLIER,mae\n");
+    Serial.print("value,OUTLIER,mae\n");
   #endif
 
   while (true) {
@@ -145,7 +155,7 @@ void task2(void *parameter) {
 
     if(!ban){
       #if DEBUG == 1
-        printf("Tarea 2 ejecutándose en el núcleo 1 %d\n", ban);
+        Serial.print("Tarea 2 ejecutándose en el núcleo 1\n");
       #endif
       ban = true;
 
@@ -166,21 +176,49 @@ void task2(void *parameter) {
       
 
       #if DEBUG == 1
-        printf("\n**********************************************\n");
-        printf("********** Completeness DF: %.5f\n", p_com_df);
-        printf("********** Completeness NOVA: %.5f\n", p_com_nova);
-        printf("********** Uncertainty: %.5f\n", uncer);
-        printf("********** Precision DF: %.5f\n", p_df);
-        printf("********** Precision NOVA: %.5f\n", p_nova);
-        printf("********** Accuracy DF: %.5f\n", a_df);
-        printf("********** Accuracy NOVA: %.5f\n", a_nova);
-        printf("********** Concordance: %.5f\n", concor);
-        printf("********** Value Fusioned: %.5f\n", fusion);
-        printf("********** DQ Index: %.5f\n", DQIndex);
+        Serial.print("\n**********************************************\n");
+        Serial.print("********** Completeness DF: ");
+        Serial.println(p_com_df, decimales);
+        Serial.print("********** Completeness NOVA: ");
+        Serial.println(p_com_nova, decimales);
+        Serial.print("********** Uncertainty: ");
+        Serial.println(uncer, decimales);
+        Serial.print("********** Precision DF: ");
+        Serial.println(p_df, decimales);
+        Serial.print("********** Precision NOVA: ");
+        Serial.println(p_nova, decimales);
+        Serial.print("********** Accuracy DF: ");
+        Serial.println(a_df, decimales);
+        Serial.print("********** Accuracy NOVA: ");
+        Serial.println(a_nova, decimales);
+        Serial.print("********** Concordance: ");
+        Serial.println(concor, decimales);
+        Serial.print("********** Value Fusioned: ");
+        Serial.println(fusion, decimales);
+        Serial.print("********** DQ Index: ");
+        Serial.println(DQIndex, decimales);
       #endif
 
       #if (DEBUG == 2) || (DEBUG == 4)
-        printf("%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",p_com_df,p_com_nova,p_df,p_nova,a_df,a_nova,uncer,concor,fusion,DQIndex);
+        Serial.print(p_com_df, decimales);
+        Serial.print(",");
+        Serial.print(p_com_nova, decimales);
+        Serial.print(",");
+        Serial.print(p_df, decimales);
+        Serial.print(",");
+        Serial.print(p_nova, decimales);
+        Serial.print(",");
+        Serial.print(a_df, decimales);
+        Serial.print(",");
+        Serial.print(a_nova, decimales);
+        Serial.print(",");
+        Serial.print(uncer, decimales);
+        Serial.print(",");
+        Serial.print(concor, decimales);
+        Serial.print(",");
+        Serial.print(fusion, decimales);
+        Serial.print(",");
+        Serial.println(DQIndex, decimales);
       #endif
 
       /*
@@ -264,7 +302,7 @@ void task2(void *parameter) {
             */
 
             #if DEBUG == 1
-              Serial.println("Inference result: ");
+              Serial.println("\nInference result: ");
               String msg = "Is " + String(value,2) + " an Outlier?: ";
               Serial.print(msg);
               if (mae_loss > THRESHOLD){
@@ -274,7 +312,7 @@ void task2(void *parameter) {
                 Serial.println(values_df[i]);
                 Serial.print("MAE: ");
                 Serial.println(mae_loss);
-                Serial.println();
+                //Serial.println();
               }
               else{
                 Serial.println("NO");
@@ -283,7 +321,11 @@ void task2(void *parameter) {
           }
 
           #if (DEBUG == 3) || (DEBUG == 4)
-            printf("%.5f,%c,%.5f\n",values_df[i],*outlier,mae_loss);
+            Serial.print(values_df[i], decimales);
+            Serial.print(",");
+            Serial.print(*outlier);
+            Serial.print(",");
+            Serial.println(mae_loss, decimales);
           #endif
 
       }
@@ -314,11 +356,11 @@ void setup() {
   // Configurar y conectar WiFi
   ConnectToWiFi();
   
-  initialize_spiffs();
-  create_file(data); // Archivo de memoria permanente 
-  create_file(dimensions); // Archivo que almacena las métricas cada hora 
-  write_text_to_file(dimensions, "hora,comp_df,comp_nova,prec_df,prec_nova,acc_df,acc_nova,uncer,concor");
-  write_text_to_file(data, "fechaHora,pm25df,pm25nova");
+  //initialize_spiffs();
+  //create_file(data); // Archivo de memoria permanente 
+  //create_file(dimensions); // Archivo que almacena las métricas cada hora 
+  //write_text_to_file(dimensions, "hora,comp_df,comp_nova,prec_df,prec_nova,acc_df,acc_nova,uncer,concor");
+  //write_text_to_file(data, "fechaHora,pm25df,pm25nova");
   createMQTTClient();
 
   // Autoeoncoder
