@@ -73,7 +73,7 @@ float uncertainty(float *data1,float *data2, int size) {
     printf("%10.5f - %10.5f --- %10.5f --- %10.5f\n", d1, d2, (d1 - d2)*(d1 - d2), (d1 + d2));
 #endif
     }
-    avg /= 2*size;
+    avg /= size;
     v = sqrt(error/(2*size*avg*avg));
 #ifdef DEBUG
     printf("------------------------------------------------------\n");
@@ -160,35 +160,39 @@ float accuracy(float *data1, float data2, int size) {
 
 
 float PearsonCorrelation(float *list1, float *list2, int size) {
+    // https://www.geeksforgeeks.org/program-find-correlation-coefficient/
 
-    float mean1 = calculateMean(list1, size);
-    float mean2 = calculateMean(list2, size);
-
-    float numerator = 0.0;
-    float denominator1 = 0.0;
-    float denominator2 = 0.0;
-
-    for (size_t i = 0; i < size; ++i) {
-        if(isnan(*(list1 + i)) || isnan(*(list2 + i))) {
-            numerator += 0;
+    float sum_X = 0, sum_Y = 0, sum_XY = 0;
+    float squareSum_X = 0, squareSum_Y = 0;
+ 
+    for (int i = 0; i < size; i++){
+        if(isnan(list1[i]) || isnan(list2[i])) {
+            sum_X += 0;
+            sum_Y += 0;
+            sum_XY += 0;
         }
-        else {
-            numerator += (list1[i] - mean1) * (list2[i] - mean2);
-            denominator1 += pow(list1[i] - mean1, 2);
-            denominator2 += pow(list2[i] - mean2, 2);
-            //printf("%10.5f - %10.5f\n",list1[i], list2[i]);
+        else{
+            // sum of elements of array X.
+            sum_X = sum_X + list1[i];
+    
+            // sum of elements of array Y.
+            sum_Y = sum_Y + list2[i];
+    
+            // sum of X[i] * Y[i].
+            sum_XY = sum_XY + list1[i] * list2[i];
+    
+            // sum of square of array elements.
+            squareSum_X = squareSum_X + list1[i] * list1[i];
+            squareSum_Y = squareSum_Y + list2[i] * list2[i];
         }
-
     }
-
-    if (denominator1 == 0 || denominator2 == 0) {
-        fprintf(stderr, "Error: One of the lists has zero standard deviation. Pearson's correlation is not defined in this case.\n");
-        return 0.0;
-    }
-
-    //printf("%10.5f - %10.5f --- %10.5f --- %10.5f --- %10.5f\n", mean1, mean2, numerator, denominator1, denominator2);
-
-    return numerator / sqrt(denominator1 * denominator2);
+ 
+    // use formula for calculating correlation coefficient.
+    float corr = (float)(size * sum_XY - sum_X * sum_Y) 
+                  / sqrt((size * squareSum_X - sum_X * sum_X) 
+                      * (size * squareSum_Y - sum_Y * sum_Y));
+ 
+    return corr;
 }
 
 float* plausability(float p_com_df, float p_com_nova, float p_df, float p_nova, float a_df, float a_nova, float *data1, float *data2, int size){

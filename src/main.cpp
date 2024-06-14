@@ -28,8 +28,12 @@ extern "C" {
 #include "utils.h"
 };
 
-// Set to 1 to output debug info to Serial, 0 otherwise
-#define DEBUG 1
+// Set debug info
+#define DEBUG 2 //{0: No debug anything, 
+                // 1: Debug full DQ and Autoencoder results, 
+                // 2: Debug resume DQ only, 
+                // 3: Debug resume Autoencoder only,
+                // 4: Debug DQ and Autoencoder resume}
 
 
 // Settings Autoencoder
@@ -124,48 +128,62 @@ void task1(void *parameter) {
 
 void task2(void *parameter) {
   float dimen[24][10];
+  const char* outlier;
+  float mae_loss;
+
+  #if DEBUG == 2
+    Serial.printf("comp_df,comp_nova,pres_df,pres_nova,acc_df,acc_nova,uncer,concor,fusion,DQIndex\n");
+  #endif
+
+  #if DEBUG == 3
+    Serial.printf("value,OUTLIER,mae\n");
+  #endif
+
   while (true) {
 
     delay(frec/2);
 
     if(!ban){
-      printf("Tarea 2 ejecutándose en el núcleo 1 %d\n", ban);
+      #if DEBUG == 1
+        printf("Tarea 2 ejecutándose en el núcleo 1 %d\n", ban);
+      #endif
       ban = true;
 
       size_t listSize = sizeof(values_nova) / sizeof(values_nova[0]);
       //listSize = sizeof(values_nova)/4;
 
-      float p_com_df = completeness(values_df, listSize);
-      printf("********** Completeness DF: %.5f\n", p_com_df);
-      
+      float p_com_df = completeness(values_df, listSize);   
       float p_com_nova = completeness(values_nova, listSize);
-      printf("********** Completeness NOVA: %.5f\n", p_com_nova);
-
       float uncer = uncertainty(values_df, values_nova, listSize);
-      printf("********** Uncertainty: %.5f\n", uncer);
-
       float p_df = precision(values_df, listSize);
-      printf("********** Precision DF: %.5f\n", p_df);
-
       float p_nova = precision(values_nova, listSize);
-      printf("********** Precision NOVA: %.5f\n", p_nova);
-      
       float a_df = accuracy(values_df, value_siata, listSize);
-      printf("********** Accuracy DF: %.5f\n", a_df);
-
       float a_nova = accuracy(values_nova, value_siata, listSize);
-      printf("********** Accuracy NOVA: %.5f\n", a_nova);
-
       float concor = PearsonCorrelation(values_df, values_nova, listSize);
-      printf("********** Concordance: %.5f\n", concor);
-
       float* valuesFusioned = plausability(p_com_df, p_com_nova, p_df, p_nova, a_df, a_nova, values_df, values_nova, listSize);
       float fusion = calculateMean(valuesFusioned, listSize);
-      printf("********** Value Fusioned: %.5f\n", fusion);
-
       float DQIndex = DQ_Index(valuesFusioned, uncer, concor, value_siata, listSize);
-      printf("********** DQ Index: %.5f\n", DQIndex);
+      
 
+      #if DEBUG == 1
+        printf("\n**********************************************\n");
+        printf("********** Completeness DF: %.5f\n", p_com_df);
+        printf("********** Completeness NOVA: %.5f\n", p_com_nova);
+        printf("********** Uncertainty: %.5f\n", uncer);
+        printf("********** Precision DF: %.5f\n", p_df);
+        printf("********** Precision NOVA: %.5f\n", p_nova);
+        printf("********** Accuracy DF: %.5f\n", a_df);
+        printf("********** Accuracy NOVA: %.5f\n", a_nova);
+        printf("********** Concordance: %.5f\n", concor);
+        printf("********** Value Fusioned: %.5f\n", fusion);
+        printf("********** DQ Index: %.5f\n", DQIndex);
+      #endif
+
+      #if (DEBUG == 2) || (DEBUG == 4)
+        printf("%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",p_com_df,p_com_nova,p_df,p_nova,a_df,a_nova,uncer,concor,fusion,DQIndex);
+      #endif
+
+      /*
       char mqtt_msg[50];
       sprintf(mqtt_msg, "%s,%.5f,distancia,%.5f",ID,fusion,DQIndex);
       client.publish(TOPIC.c_str(), mqtt_msg);
@@ -185,7 +203,7 @@ void task2(void *parameter) {
       dimen[siataValue%24][9] = DQIndex;
 
       //read_data_from_file("/spiffs/data.txt"); // Lee el archivo con formato de hora y valor float
-
+      */
       
       // Autoencoder
       TfLiteStatus invoke_status;
@@ -197,63 +215,81 @@ void task2(void *parameter) {
       // Copiar los datos al tensor de entrada del modelo
       for (int i = 0; i < listSize; i++) {
           float value = input_data[i];
-          model_input->data.f[0] = value;
 
-          /*
-          Serial.println("\nValores ingresados al modelo");
-          for (int pos = 0; pos < listSize; pos++) {
-            Serial.println(model_input->data.f[pos]);
-          }
-          */
+          if(isnan(value)){
+            mae_loss = 0;
+            outlier = "N";
+          }else{
 
-          // Run inference
-          invoke_status = interpreter->Invoke();
-          if (invoke_status != kTfLiteOk) {
-            error_reporter->Report("Invoke failed on input");
-          }
+            model_input->data.f[0] = value;
 
-          // Read predicted y value from output buffer (tensor)
-          float acum = 0;
-          Serial.println();
-          
-
-          //Serial.println("\nValores output después de ejecutado el modelo 1");
-          // Reshaping the array for compatibility with 1D model
-          for (int pos = 0; pos < listSize*16; pos+=4) {
-            //Serial.println(model_output->data.f[pos]);
-
-            acum += model_output->data.f[pos];
-          }
-
-          float pred_vals = acum/4;
-
-          /*
-          Serial.println("\nValores output después de ejecutado el modelo 2");
-          Serial.println(pred_vals);
-          */
-
-          #if DEBUG
-            Serial.println("Inference result: ");
-            String msg = "Is " + String(value,2) + " an Outlier?: ";
-            Serial.print(msg);
-            float mae_loss = fabs(pred_vals - value);
-            if (mae_loss > THRESHOLD){
-              Serial.println("YES");
-              Serial.println("****** OUTLIER ******");
-              Serial.print("INPUT DATA: ");
-              Serial.println(values_df[i]);
-              Serial.print("MAE: ");
-              Serial.println(mae_loss);
-              Serial.println();
+            /*
+            Serial.println("\nValores ingresados al modelo");
+            for (int pos = 0; pos < listSize; pos++) {
+              Serial.println(model_input->data.f[pos]);
             }
-            else{
-              Serial.println("NO");
-            }           
+            */
+
+            // Run inference
+            invoke_status = interpreter->Invoke();
+            if (invoke_status != kTfLiteOk) {
+              error_reporter->Report("Invoke failed on input");
+            }
+
+            // Read predicted y value from output buffer (tensor)
+            float acum = 0;
+            //Serial.println("*******");
+            
+
+            //Serial.println("\nValores output después de ejecutado el modelo 1");
+            // Reshaping the array for compatibility with 1D model
+            for (int pos = 0; pos < 16; pos+=4) {
+              //Serial.println(model_output->data.f[pos]);
+
+              acum += model_output->data.f[pos];
+            }
+
+            float pred_vals = acum/4;
+
+            mae_loss = fabs(pred_vals - value);
+            if (mae_loss > THRESHOLD){
+              outlier = "Y";
+            }else{
+              outlier = "N";
+            }
+
+            /*
+            Serial.println("\nValores output después de ejecutado el modelo 2");
+            Serial.println(pred_vals);
+            */
+
+            #if DEBUG == 1
+              Serial.println("Inference result: ");
+              String msg = "Is " + String(value,2) + " an Outlier?: ";
+              Serial.print(msg);
+              if (mae_loss > THRESHOLD){
+                Serial.println("YES");
+                Serial.println("****** OUTLIER ******");
+                Serial.print("INPUT DATA: ");
+                Serial.println(values_df[i]);
+                Serial.print("MAE: ");
+                Serial.println(mae_loss);
+                Serial.println();
+              }
+              else{
+                Serial.println("NO");
+              }           
+            #endif
+          }
+
+          #if (DEBUG == 3) || (DEBUG == 4)
+            printf("%.5f,%c,%.5f\n",values_df[i],*outlier,mae_loss);
           #endif
+
       }
       // Liberar la memoria asignada por normalize_data
       free(input_data);
-      printf("************ Free Memory: %u bytes ************\n", esp_get_free_heap_size());
+      //printf("************ Free Memory: %u bytes ************\n", esp_get_free_heap_size());
 
     }
 

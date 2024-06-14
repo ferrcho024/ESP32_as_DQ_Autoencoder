@@ -29,7 +29,7 @@ void clientCallback(char* topic, byte* payload, unsigned int length) {
   // Serial.print("Message arrived [");
   // Serial.print(TOPIC.c_str());
   // Serial.print("] ");
-  // Serial.println(response);
+  // Serial.println(response); 
   in_txt = response;
   callback = true;
 
@@ -53,6 +53,9 @@ void reconnectMQTTClient() {
       Serial.println(BROKER.c_str());
       // Topic(s) subscription
       client.subscribe(TOPIC.c_str());
+      Serial.print("Subscribed to Topic: ");
+      Serial.println(TOPIC.c_str());
+      
     }
     else {
       Serial.print("Retying in 5 seconds - failed, rc=");
