@@ -224,7 +224,7 @@ void task2(void *parameter) {
         // t_beforeDQ and mem_beforeDQ
         posicion += sprintf(mensaje + posicion, "%lu", micros());
         mensaje[posicion++] = ',';
-        posicion += sprintf(mensaje + posicion, "%u", esp_get_free_heap_size());
+        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
         mensaje[posicion++] = ',';
       #endif
 
@@ -244,7 +244,7 @@ void task2(void *parameter) {
         // t_afterDQ and mem_afterDQ
         posicion += sprintf(mensaje + posicion, "%lu", micros());
         mensaje[posicion++] = ',';
-        posicion += sprintf(mensaje + posicion, "%u", esp_get_free_heap_size());
+        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
         mensaje[posicion++] = ',';
       #endif
       
@@ -327,7 +327,7 @@ void task2(void *parameter) {
         // t_initAuto and mem_initAuto
         posicion += sprintf(mensaje + posicion, "%lu", micros());
         mensaje[posicion++] = ',';
-        posicion += sprintf(mensaje + posicion, "%u", esp_get_free_heap_size());
+        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
         mensaje[posicion++] = ',';
       #endif
 
@@ -419,7 +419,7 @@ void task2(void *parameter) {
       // t_finAuto and mem_finAuto
         posicion += sprintf(mensaje + posicion, "%lu", micros());
         mensaje[posicion++] = ',';
-        posicion += sprintf(mensaje + posicion, "%u", esp_get_free_heap_size());
+        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
         mensaje[posicion] = '\0';
         Serial.println(mensaje);
         mensaje[0] = '\0';
