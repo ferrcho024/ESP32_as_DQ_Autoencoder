@@ -1,6 +1,11 @@
 #include "WiFi.h" // ESP32 WiFi include
 #include "esp_sntp.h"
 #include "WiFiConfig.h" // My WiFi configuration.
+#include "mqtt.h"
+
+IPAddress ip(192, 168, 1, 200);
+IPAddress mask(255, 255, 255, 0);
+
 
 void ledBlink(int repe) {
 
@@ -52,12 +57,37 @@ void setTimezone(String timezone){
   tzset();
 }
 
+void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
+  Serial.print("************ Free Memory (disconnected): ");
+  Serial.println(esp_get_free_heap_size());
+  //Serial.println("Disconnected from WiFi access point");
+  Serial.print("WiFi lost connection. Reason: ");
+  Serial.println(info.wifi_sta_disconnected.reason);
+  //Serial.println("Trying to Reconnect");
+  WiFi.disconnect(true);
+  //WiFi.config(ip, INADDR_NONE, mask);
+  WiFi.begin(SSID, WiFiPassword);
+  uint8_t i = 0;
+  while (WiFi.status() != WL_CONNECTED){
+        Serial.print('*');
+        delay(500);
+
+        if ((++i % 16) == 0)
+        {
+          //Serial.println(F(" still trying to connect"));
+          WiFi.disconnect(true);
+          WiFi.begin(SSID, WiFiPassword);
+        }
+  }
+  createMQTTClient();
+}
+
 void ConnectToWiFi()
 {
- 
   WiFi.mode(WIFI_STA);
+  //WiFi.config(ip, INADDR_NONE, mask);
   WiFi.begin(SSID, WiFiPassword);
-  Serial.print("Connecting to "); Serial.println(SSID);
+  Serial.print(F("Connecting to ")); Serial.println(SSID);
  
   uint8_t i = 0;
   while (WiFi.status() != WL_CONNECTED)
@@ -68,11 +98,14 @@ void ConnectToWiFi()
     if ((++i % 16) == 0)
     {
       Serial.println(F(" still trying to connect"));
+      WiFi.disconnect(true);
+      WiFi.begin(SSID, WiFiPassword);
     }
   }
  
   Serial.print(F("Connected. My IP address is: "));
   Serial.println(WiFi.localIP());
+  WiFi.onEvent(WiFiStationDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
   delay(1000);
 
@@ -82,6 +115,11 @@ void ConnectToWiFi()
 
   printTime();
   //delay(1000); 
+}
+
+void WiFiReconnect(){
+  WiFi.disconnect();
+  WiFi.reconnect();
 }
 
 struct tm get_current_time() {

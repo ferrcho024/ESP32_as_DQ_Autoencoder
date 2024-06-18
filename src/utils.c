@@ -21,11 +21,11 @@ float calculateMean(const float *data, size_t size) {
 
     for (int i = 0; i < size; i++) {
       // Data 1
-      if(isnan(*(data + i))) {
+      if(isnan(data[i])) {
           d1 = 0;
       }
       else {
-          d1 = *(data + i);
+          d1 = data[i];
       }
       sum += d1;
     }
@@ -41,7 +41,7 @@ float calculateStd(const float *data, size_t size) {
 
     for (int i = 0; i < size; i++) {
       // Data 1
-      if(isnan(*(data + i))) {
+      if(isnan(data[i])) {
           d1 = pow(mean, 2);
       }
       else {
@@ -53,9 +53,11 @@ float calculateStd(const float *data, size_t size) {
     return sqrt(diff / size);
 }
 
+/*
 // Normalize values to be evaluated for the model.
 float* normalize_data(const float *data, size_t size, const float mean_training, const float std_training){
-    float* norm = (float*)malloc(sizeof(float) * size);
+    //float* norm = (float*)malloc(sizeof(float) * size);
+    static float norm[60];
 
     //float mean = calculateMean(data, size);
     //float std = calculateStd(data, size);
@@ -71,4 +73,24 @@ float* normalize_data(const float *data, size_t size, const float mean_training,
     }
 
     return norm;  
+}
+*/
+
+// Normalize values to be evaluated for the model.
+void normalize_data(const float *data, size_t size, const float mean_training, const float std_training, float* input_data){
+    //float* norm = (float*)malloc(sizeof(float) * size);
+    //static float norm[60];
+
+    //float mean = calculateMean(data, size);
+    //float std = calculateStd(data, size);
+
+    for (size_t i = 0; i < size; i++) {
+      if(isnan(data[i])) {
+          input_data[i] = data[i];
+      }
+      else {
+          //norm[i] = (data[i] - mean)/std;
+          input_data[i] = (data[i] - mean_training)/std_training;
+      }
+    }
 }
