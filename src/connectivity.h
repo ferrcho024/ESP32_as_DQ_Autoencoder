@@ -2,6 +2,7 @@
 #include "esp_sntp.h"
 #include "WiFiConfig.h" // My WiFi configuration.
 #include "mqtt.h"
+//#include "esp_wifi.h"
 
 IPAddress ip(192, 168, 1, 200);
 IPAddress mask(255, 255, 255, 0);

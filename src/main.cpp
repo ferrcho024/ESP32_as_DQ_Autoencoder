@@ -1,9 +1,11 @@
 // Library includes
 #include <Arduino.h>
 #include <math.h>
+#include <esp_sleep.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "freertos/queue.h"
+#include "esp_wifi.h"
 
 #define LED_BUILTIN 3
 const int ledPin = LED_BUILTIN;
@@ -42,6 +44,33 @@ extern "C" {
 // Execution times
 char mensaje[200];
 int posicion = 0;
+
+// Sleep function with low power consumption and wifi sleep, no disconnection.
+//esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // Configurar el modo de bajo consumo Modem Sleep
+void light_sleep(int seg){
+  // Sleep modes ESP32 https://deepbluembedded.com/esp32-sleep-modes-power-consumption/ 
+  // Sleep modes ESP32 https://lastminuteengineers.com/esp32-sleep-modes-power-consumption/
+  esp_sleep_enable_timer_wakeup(seg * 1000000); // Espera seg segundos
+  esp_wifi_set_ps(WIFI_PS_MAX_MODEM); // Configurar el modo de bajo consumo Modem Sleep
+  esp_light_sleep_start();
+}
+
+void changeFrecuency(int seg){
+
+  // Consumo en diferencias frecuencias https://mischianti.org/esp32-practical-power-saving-manage-wifi-and-cpu-1/
+
+  delay(1000);
+  //Serial.print(F("Current CPU Frecuency: "));
+  //Serial.println(getCpuFrequencyMhz());
+  setCpuFrequencyMhz(80);
+  //Serial.print(F("Now CPU Frecuency: \n"));
+  //Serial.println(getCpuFrequencyMhz());
+  delay(seg * 1000);
+  setCpuFrequencyMhz(240);
+  //Serial.print(F("Restored CPU Frecuency: \n"));
+  //Serial.println(getCpuFrequencyMhz());
+  delay(1000);
+}
 
 // Settings Autoencoder
 constexpr float THRESHOLD = 0.3500242427984803;    // Any MSE over this is an anomaly
@@ -123,6 +152,7 @@ void task1(void *parameter) {
       memcpy(values_df, queue_df, sizeof(queue_df));
       memcpy(values_nova, queue_nova, sizeof(queue_nova));
       ban = false;
+      //light_sleep(3);
     }
 
     if (callback){
@@ -193,15 +223,15 @@ void task2(void *parameter) {
 
 
   #if DEBUG == 2
-    Serial.print(F("comp_df,comp_nova,pres_df,pres_nova,acc_df,acc_nova,uncer,concor,fusion,DQIndex\n"));
+    Serial.print(F("Ecomp_df,Ecomp_nova,Epres_df,Epres_nova,Eacc_df,Eacc_nova,Euncer,Econcor,Efusion,EDQIndex\n"));
   #endif
 
   #if DEBUG == 3
-    Serial.print(F("value,OUTLIER,mae\n"));
+    Serial.print(F("Evalue,EOUTLIER,Emae\n"));
   #endif
 
   #if DEBUG == 5
-    Serial.print(F("t_beforeDQ,mem_beforeDQ,t_afertDQ,mem_afertDQ,t_initAuto,mem_initAuto,t_finAuto,mem_finAuto\n"));
+    Serial.print(F("Et_beforeDQ,Emem_beforeDQ,Et_afertDQ,Emem_afertDQ,Et_initAuto,Emem_initAuto,Et_finAuto,Emem_finAuto\n"));
   #endif
 
   while (true) {
@@ -211,6 +241,11 @@ void task2(void *parameter) {
     if(!ban){
       //Serial.print(F("************ Free Memory: (calculo DQ)"));
       //Serial.println(esp_get_free_heap_size());
+
+      //Sleep
+      //light_sleep(2);
+      changeFrecuency(4);
+      
       
       #if DEBUG == 1
         Serial.print(F("Tarea 2 ejecutándose en el núcleo 1\n"));
@@ -240,6 +275,7 @@ void task2(void *parameter) {
       fusion = calculateMean(valuesFusioned, listSize);
       DQIndex = DQ_Index(valuesFusioned, uncer, concor, value_siata, listSize);
 
+
       #if DEBUG == 5
         // t_afterDQ and mem_afterDQ
         posicion += sprintf(mensaje + posicion, "%lu", micros());
@@ -247,6 +283,10 @@ void task2(void *parameter) {
         posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
         mensaje[posicion++] = ',';
       #endif
+
+      //Serial.print(F("Inicio Pausa\n"));
+      //light_sleep(3);
+      //Serial.print(F("Fin Pausa\n"));
       
 
       #if DEBUG == 1
@@ -415,6 +455,10 @@ void task2(void *parameter) {
           #endif
 
       }
+      
+      //light_sleep(4);
+      
+      
       #if DEBUG == 5
       // t_finAuto and mem_finAuto
         posicion += sprintf(mensaje + posicion, "%lu", micros());
@@ -425,6 +469,9 @@ void task2(void *parameter) {
         mensaje[0] = '\0';
         posicion = 0;
       #endif
+
+      changeFrecuency(4);
+      
 
       // Liberar la memoria asignada por normalize_data
       //free(input_data);
