@@ -106,7 +106,8 @@ void ConnectToWiFi()
  
   Serial.print(F("Connected. My IP address is: "));
   Serial.println(WiFi.localIP());
-  WiFi.onEvent(WiFiStationDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  //WiFi.onEvent(WiFiStationDisconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  ledBlink(3);
 
   delay(1000);
 

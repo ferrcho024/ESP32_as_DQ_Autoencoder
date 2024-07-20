@@ -1,3 +1,6 @@
+#define MODE 2  // MODE 1: recive data from MQTT
+                // MODE 2: Read data from a list
+
 // Library includes
 #include <Arduino.h>
 #include <math.h>
@@ -11,13 +14,14 @@
 const int ledPin = LED_BUILTIN;
 
 // Local includes 
-#include "modelo_df.h" // Autoencoder
+
 #include "parameters.h"
 // #include "file_func.h"
 #include "connectivity.h"
 #include "dimensions.h"
 //#include "mqtt.h"
 
+#include "modelo_df.h" // Autoencoder
 // Import TensorFlow stuff - Autoencoder
 #include <TensorFlowLite_ESP32.h>
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
@@ -102,16 +106,6 @@ void value_to_list(float *list, String value, int pos ){
     }
 }
 
-/*
-void value_to_list(float *list, const char* value, int pos ){
-    if (strcmp(value, "nan") == 0)  {
-        list[pos] = NAN;  // Representación de NaN en C
-    } else {
-        list[pos] = atof(value);
-    }
-}
-*/
-
 // TFLite globals, used for compatibility with Arduino-style sketches - Autoencoder
 namespace {
   tflite::ErrorReporter* error_reporter = nullptr;
@@ -127,11 +121,6 @@ namespace {
   uint8_t tensor_arena[kTensorArenaSize];
 } // namespace
 
-
-// Declaración de una cola
-//QueueHandle_t queue_df;
-//QueueHandle_t queue_nova;
-
 void task1(void *parameter) {
   int cont = 0; // Variable de conteo de datos recibidos.
   float queue_df[MAX_SIZE];
@@ -143,11 +132,18 @@ void task1(void *parameter) {
   //Serial.print(F("************ Free Memory: (Memoria inicial)"));
   //Serial.println(esp_get_free_heap_size());
   
+  #if MODE == 2
+    callback = true;
+  #endif
+
   while(true){
     delay(frec/4);
     client.loop();
 
     if (cont > 59){
+      #if MODE == 2
+        callback = false;
+      #endif
       cont = 0;
       memcpy(values_df, queue_df, sizeof(queue_df));
       memcpy(values_nova, queue_nova, sizeof(queue_nova));
@@ -157,6 +153,14 @@ void task1(void *parameter) {
 
     if (callback){
       ledBlink(1);
+
+      #if MODE == 2
+        in_txt += datos_df[cont];
+        in_txt += ",";
+        in_txt += datos_nova[cont];
+        in_txt += ",";
+        in_txt += dato_siata;
+      #endif
 
       if (in_txt.length() > 1){     
 
@@ -187,7 +191,14 @@ void task1(void *parameter) {
         value_to_list(queue_df, df_value, cont);
         value_to_list(queue_nova, nova_value, cont);      
 
-        callback = false;
+        #if MODE == 1
+          callback = false;
+        #endif
+
+        #if MODE == 2
+          delay(500);
+        #endif       
+        
         cont++;
       } else{
         cont = 60;
@@ -471,6 +482,10 @@ void task2(void *parameter) {
       #endif
 
       changeFrecuency(4);
+
+      #if MODE == 2
+        callback = true;
+      #endif
       
 
       // Liberar la memoria asignada por normalize_data
@@ -500,13 +515,21 @@ void setup() {
 
   // Configurar y conectar WiFi
   ConnectToWiFi();
+  #if MODE == 2
+    WiFi.disconnect();
+  #endif
+  
   
   //initialize_spiffs();
   //create_file(data); // Archivo de memoria permanente 
   //create_file(dimensions); // Archivo que almacena las métricas cada hora 
   //write_text_to_file(dimensions, "hora,comp_df,comp_nova,prec_df,prec_nova,acc_df,acc_nova,uncer,concor");
   //write_text_to_file(data, "fechaHora,pm25df,pm25nova");
-  createMQTTClient();
+  #if MODE == 1
+    createMQTTClient();
+  #endif
+  
+  
 
   // Autoeoncoder
   // Set up logging (will report to Serial, even within TFLite functions) - Autoencoder
