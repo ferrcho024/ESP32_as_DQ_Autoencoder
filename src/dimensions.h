@@ -255,6 +255,8 @@ float* plausability(float p_com_df, float p_com_nova, float p_df, float p_nova, 
 
 void plausability(float p_com_df, float p_com_nova, float p_df, float p_nova, float a_df, float a_nova, float *data1, float *data2, int size, float* valuesFusioned){
     float sum_df = 0, sum_nova;
+    float value_d1;
+    float value_d2;
 
     if (p_com_df > 0.75){
         sum_df += (p_com_df - 0.75)/(1 - 0.75);
@@ -296,11 +298,23 @@ void plausability(float p_com_df, float p_com_nova, float p_df, float p_nova, fl
     float b = 1 - a;
 
     //float* fusioned = (float*)malloc(size * sizeof(float));
-    
-    for (int i = 0; i < size; i++) {
-        valuesFusioned[i] = (data1[i] * a) + (data2[i] * b);
-    }
 
+    for (int i = 0; i < size; i++) {
+        if (isnan(data1[i]) && isnan(data2[i])) {
+            valuesFusioned[i] = NAN;
+        } else if (isnan(data1[i]) || isnan(data2[i])){
+            if (isnan(data1[i])) {
+                value_d1 = 0;
+            }
+            if (isnan(data2[i])){
+                value_d2 = 0;
+            }
+            valuesFusioned[i] = (value_d1 * a) + (value_d2 * b);
+        } else {
+            valuesFusioned[i] = (data1[i] * a) + (data2[i] * b);
+        }
+        
+    }
 }
 
 float DQ_Index(float *data, float uncer, float concor, float ref, int listSize){

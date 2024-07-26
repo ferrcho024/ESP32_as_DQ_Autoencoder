@@ -1,5 +1,8 @@
 #define MODE 2  // MODE 1: recive data from MQTT
                 // MODE 2: Read data from a list
+                // MODE 3: Read data from a list and send fusión data
+                // MODE 4: Read data from a list, DQ and send data to GW
+
 
 // Library includes
 #include <Arduino.h>
@@ -21,6 +24,9 @@ const int ledPin = LED_BUILTIN;
 #include "dimensions.h"
 //#include "mqtt.h"
 
+
+#if (MODE < 4)
+
 #include "modelo_df.h" // Autoencoder
 // Import TensorFlow stuff - Autoencoder
 #include <TensorFlowLite_ESP32.h>
@@ -30,13 +36,36 @@ const int ledPin = LED_BUILTIN;
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 
+// Settings Autoencoder
+constexpr float THRESHOLD = 0.3500242427984803;    // Any MSE over this is an anomaly
+constexpr float MEAN_TRAINING = 26.403898673843077;    // Mean of the training process
+constexpr float STD_TRAINING = 10.86128076630132;    // Standard Desviation of the training process
+constexpr int WAIT_TIME = 1000;       // ms between sample sets
+
+// TFLite globals, used for compatibility with Arduino-style sketches - Autoencoder
+namespace {
+  tflite::ErrorReporter* error_reporter = nullptr;
+  const tflite::Model* model = nullptr;
+  tflite::MicroInterpreter* interpreter = nullptr;
+  TfLiteTensor* model_input = nullptr;
+  TfLiteTensor* model_output = nullptr;
+
+  // Create an area of memory to use for input, output, and other TensorFlow
+  // arrays. You'll need to adjust this by combiling, running, and looking
+  // for errors.
+  constexpr int kTensorArenaSize = 6 * 1024;
+  uint8_t tensor_arena[kTensorArenaSize];
+} // namespace
+
+#endif
+
 // We need our utils functions for calculating MAD - Autoencoder
 extern "C" {
 #include "utils.h"
 };
 
 // Set debug info
-#define DEBUG 5 //{0: No debug anything, 
+#define DEBUG 2 //{0: No debug anything, 
                 // 1: Debug full DQ and Autoencoder results, 
                 // 2: Debug resume DQ only, 
                 // 3: Debug resume Autoencoder only,
@@ -76,12 +105,6 @@ void changeFrecuency(int seg){
   delay(1000);
 }
 
-// Settings Autoencoder
-constexpr float THRESHOLD = 0.3500242427984803;    // Any MSE over this is an anomaly
-constexpr float MEAN_TRAINING = 26.403898673843077;    // Mean of the training process
-constexpr float STD_TRAINING = 10.86128076630132;    // Standard Desviation of the training process
-constexpr int WAIT_TIME = 1000;       // ms between sample sets
-
 // Settings DQ
 extern PubSubClient client;
 extern String in_txt;
@@ -106,21 +129,6 @@ void value_to_list(float *list, String value, int pos ){
     }
 }
 
-// TFLite globals, used for compatibility with Arduino-style sketches - Autoencoder
-namespace {
-  tflite::ErrorReporter* error_reporter = nullptr;
-  const tflite::Model* model = nullptr;
-  tflite::MicroInterpreter* interpreter = nullptr;
-  TfLiteTensor* model_input = nullptr;
-  TfLiteTensor* model_output = nullptr;
-
-  // Create an area of memory to use for input, output, and other TensorFlow
-  // arrays. You'll need to adjust this by combiling, running, and looking
-  // for errors.
-  constexpr int kTensorArenaSize = 6 * 1024;
-  uint8_t tensor_arena[kTensorArenaSize];
-} // namespace
-
 void task1(void *parameter) {
   int cont = 0; // Variable de conteo de datos recibidos.
   float queue_df[MAX_SIZE];
@@ -132,7 +140,7 @@ void task1(void *parameter) {
   //Serial.print(F("************ Free Memory: (Memoria inicial)"));
   //Serial.println(esp_get_free_heap_size());
   
-  #if MODE == 2
+  #if (MODE > 1)
     callback = true;
   #endif
 
@@ -141,7 +149,7 @@ void task1(void *parameter) {
     client.loop();
 
     if (cont > 59){
-      #if MODE == 2
+      #if (MODE > 1)
         callback = false;
       #endif
       cont = 0;
@@ -154,7 +162,7 @@ void task1(void *parameter) {
     if (callback){
       ledBlink(1);
 
-      #if MODE == 2
+      #if (MODE > 1) 
         in_txt += datos_df[cont];
         in_txt += ",";
         in_txt += datos_nova[cont];
@@ -195,7 +203,7 @@ void task1(void *parameter) {
           callback = false;
         #endif
 
-        #if MODE == 2
+        #if (MODE > 1)
           delay(500);
         #endif       
         
@@ -217,6 +225,7 @@ void task2(void *parameter) {
   size_t listSize;
   static float input_data[MAX_SIZE];
   static float valuesFusioned[MAX_SIZE];
+  char dato[30]; //size of the number
 
   float p_com_df;   
   float p_com_nova;
@@ -231,8 +240,7 @@ void task2(void *parameter) {
   float valueNorm; // value for normalized values as autoencoder input
   float acum; // Acumulator for Read predicted y value from output buffer (tensor)
   float pred_vals; // Value predicted for the Autoencoder
-
-
+  
   #if DEBUG == 2
     Serial.print(F("Ecomp_df,Ecomp_nova,Epres_df,Epres_nova,Eacc_df,Eacc_nova,Euncer,Econcor,Efusion,EDQIndex\n"));
   #endif
@@ -242,7 +250,7 @@ void task2(void *parameter) {
   #endif
 
   #if DEBUG == 5
-    Serial.print(F("Et_beforeDQ,Emem_beforeDQ,Et_afertDQ,Emem_afertDQ,Et_initAuto,Emem_initAuto,Et_finAuto,Emem_finAuto\n"));
+    Serial.print(F("Et_initAuto,Emem_initAuto,Et_finAuto,Emem_finAuto,Et_beforeDQ,Emem_beforeDQ,Et_afertDQ,Emem_afertDQ\n"));
   #endif
 
   while (true) {
@@ -266,6 +274,126 @@ void task2(void *parameter) {
       listSize = sizeof(values_nova) / sizeof(values_nova[0]);
       //listSize = sizeof(values_nova)/4;
 
+      //read_data_from_file("/spiffs/data.txt"); // Lee el archivo con formato de hora y valor float
+      
+      //Serial.print(F("************ Free Memory: (Autoencoder) "));
+      //Serial.println(esp_get_free_heap_size());
+
+      //float* input_data = normalize_data(values_df, listSize, MEAN_TRAINING, STD_TRAINING);
+      
+      
+      #if DEBUG == 5
+        // t_initAuto and mem_initAuto
+        posicion += sprintf(mensaje + posicion, "%lu", micros());
+        mensaje[posicion++] = ',';
+        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
+        mensaje[posicion++] = ',';
+      #endif
+
+      #if (MODE < 4)
+      normalize_data(values_df, listSize, MEAN_TRAINING, STD_TRAINING, input_data);
+      // Autoencoder
+      TfLiteStatus invoke_status;
+
+      //size_t size = sizeof(read_data) / sizeof(read_data[0]);
+
+      // Copiar los datos al tensor de entrada del modelo
+      for (int i = 0; i < listSize; i++) {
+          valueNorm = input_data[i];
+
+          if(isnan(valueNorm)){
+            mae_loss = 0;
+            outlier = 'N';
+          }else{
+
+            model_input->data.f[0] = valueNorm;
+
+            /*
+            Serial.println("\nValores ingresados al modelo");
+            for (int pos = 0; pos < listSize; pos++) {
+              Serial.println(model_input->data.f[pos]);
+            }
+            */
+
+            // Run inference
+            invoke_status = interpreter->Invoke();
+            if (invoke_status != kTfLiteOk) {
+              error_reporter->Report("Invoke failed on input");
+            }
+
+            // Read predicted y value from output buffer (tensor)
+            acum = 0;
+            //Serial.println("*******");
+            
+
+            //Serial.println("\nValores output después de ejecutado el modelo 1");
+            // Reshaping the array for compatibility with 1D model
+            for (int pos = 0; pos < 16; pos+=4) {
+              //Serial.println(model_output->data.f[pos]);
+
+              acum += model_output->data.f[pos];
+            }
+
+            pred_vals = acum/4;
+
+            mae_loss = fabs(pred_vals - valueNorm);
+            if (mae_loss > THRESHOLD){
+              outlier = 'Y';
+            }else{
+              outlier = 'N';
+            }
+
+            /*
+            Serial.println("\nValores output después de ejecutado el modelo 2");
+            Serial.println(pred_vals);
+            */
+
+            #if DEBUG == 1
+              Serial.println("\nInference result: ");
+              String msg = "Is " + String(value,2) + " an Outlier?: ";
+              Serial.print(msg);
+              if (mae_loss > THRESHOLD){
+                Serial.print(F("YES\n"));
+                Serial.print(F("****** OUTLIER ******\n"));
+                Serial.print(F("INPUT DATA: "));
+                Serial.println(values_df[i]);
+                Serial.print(F("MAE: "));
+                Serial.println(mae_loss);
+                //Serial.println();
+              }
+              else{
+                Serial.print(F("NO\n"));
+              }           
+            #endif
+          }
+
+          #if (DEBUG == 3) || (DEBUG == 4)
+            Serial.print(values_df[i], decimales);
+            Serial.print(F(","));
+            Serial.print(outlier);
+            Serial.print(F(","));
+            Serial.println(mae_loss, decimales);
+          #endif
+
+      }
+      
+      #endif
+      //light_sleep(4);
+      
+      
+      #if DEBUG == 5
+      // t_finAuto and mem_finAuto
+        posicion += sprintf(mensaje + posicion, "%lu", micros());
+        mensaje[posicion++] = ',';
+        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
+        mensaje[posicion] = '\0';
+        Serial.println(mensaje);
+        mensaje[0] = '\0';
+        posicion = 0;
+      #endif
+
+      changeFrecuency(4);
+
       #if DEBUG == 5
         // t_beforeDQ and mem_beforeDQ
         posicion += sprintf(mensaje + posicion, "%lu", micros());
@@ -274,6 +402,7 @@ void task2(void *parameter) {
         mensaje[posicion++] = ',';
       #endif
 
+      // Data Quality
       p_com_df = completeness(values_df, listSize);   
       p_com_nova = completeness(values_nova, listSize);
       uncer = uncertainty(values_df, values_nova, listSize);
@@ -364,126 +493,36 @@ void task2(void *parameter) {
       dimen[siataValue%24][7] = concor;
       dimen[siataValue%24][8] = fusion;
       dimen[siataValue%24][9] = DQIndex;
-
-      //read_data_from_file("/spiffs/data.txt"); // Lee el archivo con formato de hora y valor float
       */
-      
-      //Serial.print(F("************ Free Memory: (Autoencoder) "));
-      //Serial.println(esp_get_free_heap_size());
 
-      //float* input_data = normalize_data(values_df, listSize, MEAN_TRAINING, STD_TRAINING);
-      normalize_data(values_df, listSize, MEAN_TRAINING, STD_TRAINING, input_data);
-      
-      #if DEBUG == 5
-        // t_initAuto and mem_initAuto
-        posicion += sprintf(mensaje + posicion, "%lu", micros());
-        mensaje[posicion++] = ',';
-        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
-        mensaje[posicion++] = ',';
-      #endif
+      #if (MODE == 3) || (MODE == 4)
+        ConnectToWiFi();
+        createMQTTClient();
 
-      // Autoencoder
-      TfLiteStatus invoke_status;
+        delay(500);
 
-      //size_t size = sizeof(read_data) / sizeof(read_data[0]);
-
-      // Copiar los datos al tensor de entrada del modelo
-      for (int i = 0; i < listSize; i++) {
-          valueNorm = input_data[i];
-
-          if(isnan(valueNorm)){
-            mae_loss = 0;
-            outlier = 'N';
-          }else{
-
-            model_input->data.f[0] = valueNorm;
-
-            /*
-            Serial.println("\nValores ingresados al modelo");
-            for (int pos = 0; pos < listSize; pos++) {
-              Serial.println(model_input->data.f[pos]);
-            }
-            */
-
-            // Run inference
-            invoke_status = interpreter->Invoke();
-            if (invoke_status != kTfLiteOk) {
-              error_reporter->Report("Invoke failed on input");
-            }
-
-            // Read predicted y value from output buffer (tensor)
-            acum = 0;
-            //Serial.println("*******");
-            
-
-            //Serial.println("\nValores output después de ejecutado el modelo 1");
-            // Reshaping the array for compatibility with 1D model
-            for (int pos = 0; pos < 16; pos+=4) {
-              //Serial.println(model_output->data.f[pos]);
-
-              acum += model_output->data.f[pos];
-            }
-
-            pred_vals = acum/4;
-
-            mae_loss = fabs(pred_vals - valueNorm);
-            if (mae_loss > THRESHOLD){
-              outlier = 'Y';
-            }else{
-              outlier = 'N';
-            }
-
-            /*
-            Serial.println("\nValores output después de ejecutado el modelo 2");
-            Serial.println(pred_vals);
-            */
-
-            #if DEBUG == 1
-              Serial.println("\nInference result: ");
-              String msg = "Is " + String(value,2) + " an Outlier?: ";
-              Serial.print(msg);
-              if (mae_loss > THRESHOLD){
-                Serial.print(F("YES\n"));
-                Serial.print(F("****** OUTLIER ******\n"));
-                Serial.print(F("INPUT DATA: "));
-                Serial.println(values_df[i]);
-                Serial.print(F("MAE: "));
-                Serial.println(mae_loss);
-                //Serial.println();
-              }
-              else{
-                Serial.print(F("NO\n"));
-              }           
-            #endif
+        #if (MODE == 4)
+          for (int i = 0; i < listSize; i++ ){
+            sprintf(dato, "%s,%f,%f,%f", ID.c_str(),*(values_df + i),*(values_nova + i),value_siata);
+            client.publish((TOPIC + 1).c_str(), dato);
+            ledBlink(1);
+            delay(500);
           }
+        #endif
 
-          #if (DEBUG == 3) || (DEBUG == 4)
-            Serial.print(values_df[i], decimales);
-            Serial.print(F(","));
-            Serial.print(outlier);
-            Serial.print(F(","));
-            Serial.println(mae_loss, decimales);
-          #endif
+        #if (MODE == 3)
+          sprintf(dato, "%s,%f", ID.c_str(),fusion);
+          client.publish((TOPIC + 1).c_str(), dato);
+          ledBlink(1);
+          delay(500);
+        #endif
 
-      }
-      
-      //light_sleep(4);
-      
-      
-      #if DEBUG == 5
-      // t_finAuto and mem_finAuto
-        posicion += sprintf(mensaje + posicion, "%lu", micros());
-        mensaje[posicion++] = ',';
-        posicion += sprintf(mensaje + posicion, "%u", (ESP.getHeapSize() - ESP.getFreeHeap()));
-        mensaje[posicion] = '\0';
-        Serial.println(mensaje);
-        mensaje[0] = '\0';
-        posicion = 0;
+        client.disconnect();
+        WiFi.disconnect();
+
       #endif
 
-      changeFrecuency(4);
-
-      #if MODE == 2
+      #if (MODE > 1)
         callback = true;
       #endif
       
@@ -515,7 +554,7 @@ void setup() {
 
   // Configurar y conectar WiFi
   ConnectToWiFi();
-  #if MODE == 2
+  #if (MODE > 1)
     WiFi.disconnect();
   #endif
   
@@ -530,7 +569,7 @@ void setup() {
   #endif
   
   
-
+#if (MODE < 4)
   // Autoeoncoder
   // Set up logging (will report to Serial, even within TFLite functions) - Autoencoder
   static tflite::MicroErrorReporter micro_error_reporter;
@@ -576,6 +615,8 @@ void setup() {
   // Assign model input and output buffers (tensors) to pointers - Autoencoder
   model_input = interpreter->input(0);
   model_output = interpreter->output(0);
+
+  #endif
 
 
 
